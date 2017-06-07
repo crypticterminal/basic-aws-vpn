@@ -1,0 +1,59 @@
+---
+- hosts: vpn
+  user: ubuntu
+  become: true
+  tasks:
+    - name: update apt-cache and do system upgrade
+      apt:
+        update_cache: true
+        upgrade: dist
+    - name: install util packages
+      apt:
+        name: "{{ item }}"
+        state: installed
+      with_items:
+        - unzip
+    - name: install unattended-upgrades package
+      apt:
+        name: unattended-upgrades
+        state: present
+    - name: create config file directory
+      file:
+        name: config
+        state: directory
+    - name: upload config files
+      unarchive:
+        src: 'config.zip'
+        dest: 'config'
+    - name: configure unattended-upgrades
+      copy:
+        remote_src: True
+        src: ./config/20auto-upgrades
+        dest: /etc/apt/apt.conf.d/
+    - name: install vpn suite
+      apt:
+          name: "{{ item }}"
+          state: installed
+      with_items:
+        - openvpn
+        - easy-rsa
+    # sysctl module fails with exception
+    #- name: enable ipv4 forwarding
+    #  sysctl:
+    #    name: net.ipv4.ip_forward
+    #    value: 1
+    #    sysctl_set: yes
+    #    reload: yes
+    - name: install pre-existing openvpn server credentials
+      command: 'mv -f ./config/keys /etc/openvpn/keys'
+    - name: configure openvpn
+      copy:
+        src: 'config/server.conf'
+        dest: '/etc/openvpn/'
+    - name: configure iptables to enable vpn traffic forwarding and masquerading
+      shell: './config/setup-vpn-iptables.sh'
+    - name: enable and start openvpn daemon
+      systemd:
+        name: openvpn@server
+        enabled: yes
+        state: started
